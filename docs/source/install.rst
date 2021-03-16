@@ -132,6 +132,12 @@ Building PyCLES on Linux systems involves installing the requires Python modules
 python packages required by PyCLES are fairly standard and are likely pre-installed on most HPC systems. If the required
 packages are not install we recommend consulting your system administrator to have them installed for you.
 
+Besides, system environments and other compilers are also required to compile RRTMG section and codes written in C, include:
+    
+    1) gcc
+    2) gfortran (gfortran version needs to be lower than 9, tested with 8.4)
+    3) csh
+
 To install them on a non-HPC system we recommend using the package manager of your choice.
 
 .. note::
@@ -159,7 +165,10 @@ $ CC=mpicc python setup.py build_ext --inplace
     In the above command, mpicc should be replaced by the name of your MPI C compiler.
 
 .. note::
-    If compilation fails with a KeyError, check the flags used in the setup.py to make sure they match the flags in your machine.
+    If compilation fails with a KeyError, check the flags used in the setup.py to make sure they match the flags in your machine, may include:
+  
+    1) netcdf_include path, *change it to local path*.
+    2) netcdf_lib path, *change it to local path*.
 
 Site Specific Builds
 --------------------
