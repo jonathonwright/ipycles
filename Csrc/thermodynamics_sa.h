@@ -7,7 +7,7 @@
 #include "entropies.h"
 #include <stdio.h>
 
-inline double temperature_no_ql(double pd, double pv, double s, double qt){
+static inline double temperature_no_ql(double pd, double pv, double s, double qt){
     return T_tilde * exp((s -
                             (1.0-qt)*(sd_tilde - Rd * log(pd/p_tilde))
                             - qt * (sv_tilde - Rv * log(pv/p_tilde)))
