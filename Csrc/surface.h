@@ -3,7 +3,7 @@
 #include "thermodynamic_functions.h"
 #include "entropies.h"
 
-inline double psi_m_unstable(double zeta, double zeta0){
+static inline double psi_m_unstable(double zeta, double zeta0){
     const double x = pow((1.0 - gamma_m * zeta),0.25);
     const double x0 = pow((1.0 - gamma_m * zeta0), 0.25);
     double psi_m = 2.0 * log((1.0 + x)/(1.0 + x0)) + log((1.0 + x*x)/(1.0 + x0 * x0))-2.0*atan(x)+2.0*atan(x0);
@@ -11,7 +11,7 @@ inline double psi_m_unstable(double zeta, double zeta0){
     return psi_m;
 }
 
-inline double psi_h_unstable(double zeta, double zeta0){
+static inline double psi_h_unstable(double zeta, double zeta0){
     const double y = sqrt(1.0 - gamma_h * zeta );
     const double y0 = sqrt(1.0 - gamma_h * zeta0 );
 
@@ -20,13 +20,13 @@ inline double psi_h_unstable(double zeta, double zeta0){
     return psi_h;
 }
 
-inline double psi_m_stable(double zeta, double zeta0){
+static inline double psi_m_stable(double zeta, double zeta0){
     double psi_m = -beta_m * (zeta - zeta0);
     return psi_m;
 }
 
 
-inline double psi_h_stable(double zeta, double zeta0){
+static inline double psi_h_stable(double zeta, double zeta0){
     double psi_h = -beta_h * (zeta - zeta0);
     return psi_h;
 }
@@ -92,7 +92,7 @@ double compute_ustar(double windspeed, double buoyancy_flux, double z0, double z
     return ustar;
 }
 
-inline double entropyflux_from_thetaflux_qtflux(double thetaflux, double qtflux, double p0_b, double T_b, double qt_b, double qv_b){
+static inline double entropyflux_from_thetaflux_qtflux(double thetaflux, double qtflux, double p0_b, double T_b, double qt_b, double qv_b){
     const double exner_b = exner_c(p0_b);
     const double pd_b = pd_c(p0_b, qt_b, qv_b);
     const double pv_b = pv_c(p0_b, qt_b, qv_b);
