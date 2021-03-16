@@ -1,3 +1,9 @@
+iPyCLES project is a Large Eddy Simulation model (PyCLES) coupled with stable water isotope tracer components. Now the isotopic components are still developing, so most parts of iPyCLES are same as PyCLES, but fixed some bugs about python 3 environemnt and local system settings.
+
+Installation of ipycles follows: [install.rst](https://github.com/huzizhan/ipycles/blob/master/docs/source/install.rst)
+
+Run test cases of ipycles follows: [running.rst](https://github.com/huzizhan/ipycles/blob/master/docs/source/running.rst)
+## Introduction of [PyCLES](https://github.com/pressel/pycles)
 Python Cloud Large Eddy Simulation, or PyCLES (pronounced pickles), is a massively parallel anelastic atmospheric large eddy simulation infrastructure designed to simulate boundary layer clouds and deep convection. PyCLES is written in Python, Cython, and C. It was primarily developed by [Kyle Pressel](http://www.kylepressel.com) and [Colleen Kaul](http://www.colleenkaul.com) as part of the [Climate Dynamics Group](https://climate-dynamics.org/) at both the California Institute of Technology and ETH Zurich. 
 
 The model formulation is describe in detail in: 
