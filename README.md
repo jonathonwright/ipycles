@@ -1,7 +1,36 @@
 iPyCLES project is a Large Eddy Simulation model (PyCLES) coupled with stable water isotope tracer components. Now the isotopic components are still developing, so most parts of iPyCLES are same as PyCLES, but fixed some bugs about python 3 environemnt and local system settings.
 
-Installation of ipycles follows: [install.rst](https://github.com/huzizhan/ipycles/blob/master/docs/source/install.rst)
+## Installation of ipycles in Linux and wsl2: (tested with ubuntu, Debian and Centos):
+Important system environments needed to be installed:
 
+`$ sudo apt-get install gcc gfortran-8 csh`
+
+Here the **gfortran version** should be lower than 9 (the lastest version until May, 2021), or some files can't be compiled.
+
+We recommend using [conda](https://docs.conda.io/en/latest/) as the package management system and environment management system for python environment settings. Miniconda can be downloaded using **wget**:
+
+`$ wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh`
+
+then install by:
+
+`$ bash Miniconda3-latest-Linux-x86_64.sh`
+
+**Becareful with the python version**, which can't be higher then 3.8, because cython doesn't support python 3.9 until now (May, 2021).
+
+Install packages needed to compile ipycles:
+
+`$ conda install numpy scipy netcdf4 mpi4py matplotlib cython gcc_linux-64`
+
+Complie ipycles by doing following steps:
+
+1. `$ cd ipycles`
+
+2. `$ python generate_paramters.py`
+
+3. `$ CC=mpicc python setup.py build_ext --inplace`
+
+ More details about installation in defferent platforms and erros can be found : [install.rst](https://github.com/huzizhan/ipycles/blob/master/docs/source/install.rst)
+## Run test cases
 Run test cases of ipycles follows: [running.rst](https://github.com/huzizhan/ipycles/blob/master/docs/source/running.rst)
 ## Introduction of [PyCLES](https://github.com/pressel/pycles)
 Python Cloud Large Eddy Simulation, or PyCLES (pronounced pickles), is a massively parallel anelastic atmospheric large eddy simulation infrastructure designed to simulate boundary layer clouds and deep convection. PyCLES is written in Python, Cython, and C. It was primarily developed by [Kyle Pressel](http://www.kylepressel.com) and [Colleen Kaul](http://www.colleenkaul.com) as part of the [Climate Dynamics Group](https://climate-dynamics.org/) at both the California Institute of Technology and ETH Zurich. 
