@@ -167,8 +167,11 @@ $ CC=mpicc python setup.py build_ext --inplace
 .. note::
     If compilation fails with a KeyError, check the flags used in the setup.py to make sure they match the flags in your machine, may include:
   
-    1) netcdf_include path, *change it to local path*.
-    2) netcdf_lib path, *change it to local path*.
+    1) version of gfortran
+    2) package gcc_linux-64 should be installed using conda, if there is error like below during compiling::
+    
+    $ command not found error: command 'mpicc' failed with exit status 127
+
 
 Site Specific Builds
 --------------------
