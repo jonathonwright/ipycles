@@ -45,33 +45,33 @@ cdef extern from "entropies.h":
 
 def SurfaceFactory(namelist, LatentHeat LH, ParallelMPI.ParallelMPI Par):
 
-        casename = namelist['meta']['casename']
-        if casename == 'SullivanPatton':
-           return SurfaceSullivanPatton(LH)
-        elif casename == 'Bomex':
-            return SurfaceBomex(LH)
-        elif casename == 'Gabls':
-            return SurfaceGabls(namelist,LH)
-        elif casename == 'DYCOMS_RF01':
-            return SurfaceDYCOMS_RF01(namelist, LH)
-        elif casename == 'DYCOMS_RF02':
-            return SurfaceDYCOMS_RF02(namelist, LH)
-        elif casename == 'Rico':
-            return SurfaceRico(LH)
-        elif casename == 'Isdac':
-            return SurfaceIsdac(namelist, LH)
-        elif casename == 'IsdacCC':
-            return SurfaceIsdacCC(namelist, LH)
-        elif casename == 'Mpace':
-            return SurfaceMpace(namelist, LH)
-        elif casename == 'Sheba':
-            return SurfaceSheba(LH)
-        elif casename == 'CGILS':
-            return SurfaceCGILS(namelist, LH, Par)
-        elif casename == 'ZGILS':
-            return SurfaceZGILS(namelist, LH, Par)
-        else:
-            return SurfaceNone()
+    casename = namelist['meta']['casename']
+    if casename == 'SullivanPatton':
+        return SurfaceSullivanPatton(LH)
+    elif casename == 'Bomex':
+        return SurfaceBomex(LH)
+    elif casename == 'Gabls':
+        return SurfaceGabls(namelist,LH)
+    elif casename == 'DYCOMS_RF01':
+        return SurfaceDYCOMS_RF01(namelist, LH)
+    elif casename == 'DYCOMS_RF02':
+        return SurfaceDYCOMS_RF02(namelist, LH)
+    elif casename == 'Rico':
+        return SurfaceRico(LH)
+    elif casename == 'Isdac':
+        return SurfaceIsdac(namelist, LH)
+    elif casename == 'IsdacCC':
+        return SurfaceIsdacCC(namelist, LH)
+    elif casename == 'Mpace':
+        return SurfaceMpace(namelist, LH)
+    elif casename == 'Sheba':
+        return SurfaceSheba(LH)
+    elif casename == 'CGILS':
+        return SurfaceCGILS(namelist, LH, Par)
+    elif casename == 'ZGILS':
+        return SurfaceZGILS(namelist, LH, Par)
+    else:
+        return SurfaceNone()
 
 
 
@@ -91,6 +91,7 @@ cdef class SurfaceBase:
         self.shf = np.zeros(Gr.dims.nlg[0]*Gr.dims.nlg[1], dtype=np.double, order='c')
         self.lhf = np.zeros(Gr.dims.nlg[0]*Gr.dims.nlg[1], dtype=np.double, order='c')
         self.b_flux = np.zeros(Gr.dims.nlg[0]*Gr.dims.nlg[1], dtype=np.double, order='c')
+        self.r_vapor_flux = np.zeros(Gr.dims.nlg[0]*Gr.dims.nlg[1], dtype=np.double, order='c')
 
         # If not overridden in the specific case, set T_surface = Tg
         self.T_surface = Ref.Tg
@@ -103,6 +104,7 @@ cdef class SurfaceBase:
         NS.add_ts('obukhov_length_mean', Gr, Pa)
         NS.add_ts('friction_velocity_mean', Gr, Pa)
         NS.add_ts('buoyancy_flux_surface_mean', Gr, Pa)
+        NS.add_ts('isotope_flux_of_evaporation', Gr, Pa)
 
         return
     cpdef init_from_restart(self, Restart):
@@ -128,6 +130,7 @@ cdef class SurfaceBase:
             Py_ssize_t s_shift = PV.get_varshift(Gr, 's')
             Py_ssize_t u_shift = PV.get_varshift(Gr, 'u')
             Py_ssize_t v_shift = PV.get_varshift(Gr, 'v')
+            Py_ssize_t r_vapor_shift = PV.get_varshift(Gr, 'r_vapor')
             Py_ssize_t ql_shift, qt_shift
             double [:] t_mean =  Pa.HorizontalMean(Gr, &DV.values[t_shift])
             double cp_, lam, lv, pv, pd, sv, sd
@@ -151,6 +154,7 @@ cdef class SurfaceBase:
         else:
             ql_shift = DV.get_varshift(Gr,'ql')
             qt_shift = PV.get_varshift(Gr, 'qt')
+            isotope_flux_of_evaporation(self.r_vapor_flux, Gr, Ref, Pa)
             with nogil:
                 for i in xrange(gw, imax):
                     for j in xrange(gw, jmax):
@@ -174,6 +178,7 @@ cdef class SurfaceBase:
                         PV.tendencies[v_shift  + ijk] +=  self.v_flux[ij] * tendency_factor
                         PV.tendencies[s_shift  + ijk] +=  self.s_flux[ij] * tendency_factor
                         PV.tendencies[qt_shift + ijk] +=  self.qt_flux[ij] * tendency_factor
+                        PV.tendencies[r_vapor_shift + ijk] += self.r_vapor_flux[ij] * tendency_factor
 
         return
 
@@ -1325,4 +1330,51 @@ cdef class SurfaceSheba(SurfaceBase):
 cdef double compute_z0(double z1, double windspeed) nogil:
     cdef double z0 =z1*exp(-kappa/sqrt((0.4 + 0.079*windspeed)*1e-3))
     return z0
-
+# -------------------------------------------------------------------------
+# calculate evaporation flux of isotope ratio of vapor water from surface
+# following modified C-G model in Merlivat 1978
+cpdef isotope_flux_of_evaporation(double[:] r_ev_flux_list, Grid.Grid Gr, ReferenceState.ReferenceState Ref, ParallelMPI.ParallelMPI Pa):
+    cdef:
+        Py_ssize_t i, j, ijk, ij
+        Py_ssize_t istride = Gr.dims.nlg[1] * Gr.dims.nlg[2]
+        Py_ssize_t jstride = Gr.dims.nlg[2]
+        Py_ssize_t istride_2d = Gr.dims.nlg[1]
+        Py_ssize_t gw = Gr.dims.gw
+        double r_ev_flux 
+        double R_surface_water = 2.0052 # standard R value of V-SMOVW
+        double alpha_eq_surface # equilibrium fractionation factor
+        double alpha_k # kinetic fractionation factor 
+    alpha_k = 1
+    alpha_eq_surface = 1 / equilibrium_fractionation_factor(Ref.Tg) # fractionation factor calculated by the emperical equation below is expressed by R_liqudi/R_vapor, but in C-G model should be changed to R_vapor/R_liquid
+    rh_surface = surface_relative_humidity(Ref.Tg, Ref.qtg, Ref.Pg)
+    r_ev_flux = (alpha_eq_surface*alpha_k*R_surface_water) / ((1-rh_surface)+alpha_k*rh_surface)
+    with nogil:
+        for i in xrange(Gr.dims.nlg[0]):
+            for j in xrange(Gr.dims.nlg[1]):
+                ijk = i * istride + j * jstride + gw
+                ij = i * istride_2d + j
+                r_ev_flux_list[ij] = r_ev_flux   
+    return
+# calculate relative humidity using given temperature, water mixing ratio and pressure, based on Clausius-Clapeyron equation
+cdef double surface_relative_humidity(double t_surface, double qt_surface, double p_surface) nogil:
+    cdef:
+        double R_v = 461.5 # water vapor gas constant
+        double t_0 = 273.15 # t_0 in Clausius-Clapeyron equation, unit
+        double e_0 = 6.113 # unit hPa, e_0 in Clausius-Clapeyron equation
+        double L = 2.5e6 # latent heat of vaporization
+        double e_s # saturate water vapor pressure
+        double w_s # saturate water mixing ratio
+        double rh_surface # relative humidity
+    temp_t0 = 1/t_0
+    temp_t_sur = 1/t_surface
+    ratio = L/R_v
+    e_s = e_0 * exp(ratio*(temp_t0-temp_t_sur))
+    w_s = 0.622*(e_s/(p_surface/100))
+    rh_surface = qt_surface/w_s
+    return rh_surface
+# calculate equilibrium fractionation factor using given temperature, based on emperical equation from Majoube 1971
+cdef double equilibrium_fractionation_factor(double t) nogil:
+    cdef:
+        double alpha_eq
+    alpha_eq = exp( 1137/(t*t) - 0.4156/t - 2.0667e-3) 
+    return alpha_eq

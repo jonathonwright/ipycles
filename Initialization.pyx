@@ -18,7 +18,7 @@ from thermodynamic_functions cimport exner_c, entropy_from_thetas_c, thetas_t_c,
 cimport ReferenceState
 from Forcing cimport AdjustedMoistAdiabat
 from Thermodynamics cimport LatentHeat
-from libc.math cimport sqrt, fmin, cos, exp, fabs
+from libc.math cimport sqrt, fmin, cos, exp, fabs, log
 include 'parameters.pxi'
 # import matplotlib.pyplot as plt
 
@@ -26,40 +26,40 @@ include 'parameters.pxi'
 
 def InitializationFactory(namelist):
 
-        casename = namelist['meta']['casename']
-        if casename == 'SullivanPatton':
-            return InitSullivanPatton
-        elif casename == 'StableBubble':
-            return InitStableBubble
-        elif casename == 'SaturatedBubble':
-            return InitSaturatedBubble
-        elif casename == 'Bomex':
-            return InitBomex
-        elif casename == 'Gabls':
-            return InitGabls
-        elif casename == 'DYCOMS_RF01':
-            return InitDYCOMS_RF01
-        elif casename == 'DYCOMS_RF02':
-            return InitDYCOMS_RF02
-        elif casename == 'SMOKE':
-            return InitSmoke
-        elif casename == 'Rico':
-            return InitRico
-        elif casename == 'Isdac':
-            return InitIsdac
-        elif casename == 'IsdacCC':
-            return InitIsdacCC
-        elif casename == 'Mpace':
-            return InitMpace
-        elif casename == 'Sheba':
-            return InitSheba
-        elif casename == 'CGILS':
-            return  InitCGILS
-        elif casename == 'ZGILS':
-            return  InitZGILS
+    casename = namelist['meta']['casename']
+    if casename == 'SullivanPatton':
+        return InitSullivanPatton
+    elif casename == 'StableBubble':
+        return InitStableBubble
+    elif casename == 'SaturatedBubble':
+        return InitSaturatedBubble
+    elif casename == 'Bomex':
+        return InitBomex
+    elif casename == 'Gabls':
+        return InitGabls
+    elif casename == 'DYCOMS_RF01':
+        return InitDYCOMS_RF01
+    elif casename == 'DYCOMS_RF02':
+        return InitDYCOMS_RF02
+    elif casename == 'SMOKE':
+        return InitSmoke
+    elif casename == 'Rico':
+        return InitRico
+    elif casename == 'Isdac':
+        return InitIsdac
+    elif casename == 'IsdacCC':
+        return InitIsdacCC
+    elif casename == 'Mpace':
+        return InitMpace
+    elif casename == 'Sheba':
+        return InitSheba
+    elif casename == 'CGILS':
+        return  InitCGILS
+    elif casename == 'ZGILS':
+        return  InitZGILS
 
-        else:
-            pass
+    else:
+        pass
 
 def InitStableBubble(namelist, Grid.Grid Gr,PrognosticVariables.PrognosticVariables PV,
                        ReferenceState.ReferenceState RS, Th, NetCDFIO_Stats NS, ParallelMPI.ParallelMPI Pa, LatentHeat LH):
@@ -363,8 +363,8 @@ def InitBomex(namelist,Grid.Grid Gr,PrognosticVariables.PrognosticVariables PV,
                 for k in xrange(Gr.dims.nlg[2]):
                     ijk = ishift + jshift + k
                     PV.values[e_varshift + ijk] = 1.0-Gr.zl_half[k]/3000.0
-
-
+    # initialize r_vapor profile using rayleigh approach, based on equation 66 in Wei 2018
+    initialize_Rayleigh(Gr, PV, Pa)
     return
 
 def InitGabls(namelist,Grid.Grid Gr, PrognosticVariables.PrognosticVariables PV,
@@ -1771,3 +1771,22 @@ def interp_pchip(z_out, z_in, v_in, pchip_type=True):
         return p(z_out)
     else:
         return np.interp(z_out, z_in, v_in)
+
+def initialize_Rayleigh(Grid.Grid Gr, PrognosticVariables.PrognosticVariables PV, ParallelMPI.ParallelMPI Pa):
+    cdef:
+        Py_ssize_t r_vapor_varshift = PV.get_varshift(Gr,'r_vapor')
+        Py_ssize_t qt_varshift = PV.get_varshift(Gr, 'qt')
+        Py_ssize_t i, j, k, ishift, jshift, ijk
+        double R_std_D = 2.0052 # standard R value of V-SMOVW
+        double delta_temp_D
+
+    for i in xrange(Gr.dims.nlg[0]):
+        ishift =  i * Gr.dims.nlg[1] * Gr.dims.nlg[2]
+        for j in xrange(Gr.dims.nlg[1]):
+            jshift = j * Gr.dims.nlg[2]
+            for k in xrange(Gr.dims.nlg[2]):
+                ijk = ishift + jshift + k
+                qt_ = PV.values[qt_varshift + ijk]*1000
+                delta_temp_D = 8.99*log(qt_/0.622)-42.9 # change from kg/kg to g/kg
+                PV.values[r_vapor_varshift + ijk] += (delta_temp_D/1000 + 1)*R_std_D # the unit of delta_temp_D is permil, need to be divided by 1000 and plus 1
+    return

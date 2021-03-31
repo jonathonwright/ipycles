@@ -390,10 +390,13 @@ def Bomex():
     namelist['initialization'] = {}
     namelist['initialization']['random_seed_factor'] = 1
 
-    namelist['tracers'] = {}
-    namelist['tracers']['use_tracers'] = True
-    namelist['tracers']['scheme'] = 'PurityTracers'
+    # namelist['tracers'] = {}
+    # namelist['tracers']['use_tracers'] = True
+    # namelist['tracers']['scheme'] = 'PurityTracers'
 
+    namelist['isotopetracers'] = {}
+    namelist['isotopetracers']['use_tracers'] = True
+    namelist['isotopetracers']['scheme'] = 'No microphysics'
     return namelist
 
 

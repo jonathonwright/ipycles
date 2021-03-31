@@ -21,6 +21,7 @@ cdef class SurfaceBase:
         double [:] shf
         double [:] lhf
         double [:] b_flux
+        double [:] r_vapor_flux
         bint dry_case
         double (*L_fp)(double T, double Lambda) nogil
         double (*Lambda_fp)(double T) nogil
@@ -215,3 +216,5 @@ cdef class SurfaceZGILS(SurfaceBase):
 
 
 cdef double compute_z0(double z1, double windspeed) nogil
+cdef double surface_relative_humidity(double t, double qt, double P) nogil
+cdef double equilibrium_fractionation_factor(double t) nogil
