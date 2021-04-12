@@ -21,7 +21,8 @@ cdef class SurfaceBase:
         double [:] shf
         double [:] lhf
         double [:] b_flux
-        double [:] r_vapor_flux
+        double [:] q_ti_flux
+        double [:] r_ev_flux
         bint dry_case
         double (*L_fp)(double T, double Lambda) nogil
         double (*Lambda_fp)(double T) nogil

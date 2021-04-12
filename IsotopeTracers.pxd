@@ -40,3 +40,4 @@ cdef class IsotopeTracers_NoMicrophysics:
                    TimeStepping.TimeStepping TS, NetCDFIO_Stats NS, ParallelMPI.ParallelMPI Pa)
 
 cdef double equilibrium_fractionation_factor(double t) nogil
+cdef double q_li_equilibrium_fractionation(double q_ti, double qv, double qc, double alpha_eq_vl) nogil

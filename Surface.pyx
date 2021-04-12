@@ -91,8 +91,8 @@ cdef class SurfaceBase:
         self.shf = np.zeros(Gr.dims.nlg[0]*Gr.dims.nlg[1], dtype=np.double, order='c')
         self.lhf = np.zeros(Gr.dims.nlg[0]*Gr.dims.nlg[1], dtype=np.double, order='c')
         self.b_flux = np.zeros(Gr.dims.nlg[0]*Gr.dims.nlg[1], dtype=np.double, order='c')
-        self.r_vapor_flux = np.zeros(Gr.dims.nlg[0]*Gr.dims.nlg[1], dtype=np.double, order='c')
-
+        self.q_ti_flux = np.zeros(Gr.dims.nlg[0]*Gr.dims.nlg[1], dtype=np.double, order='c')
+        self.r_ev_flux = np.zeros(Gr.dims.nlg[0]*Gr.dims.nlg[1], dtype=np.double, order='c')
         # If not overridden in the specific case, set T_surface = Tg
         self.T_surface = Ref.Tg
 
@@ -130,7 +130,7 @@ cdef class SurfaceBase:
             Py_ssize_t s_shift = PV.get_varshift(Gr, 's')
             Py_ssize_t u_shift = PV.get_varshift(Gr, 'u')
             Py_ssize_t v_shift = PV.get_varshift(Gr, 'v')
-            Py_ssize_t r_vapor_shift = PV.get_varshift(Gr, 'r_vapor')
+            Py_ssize_t q_ti_shift = PV.get_varshift(Gr, 'qt_iso')
             Py_ssize_t ql_shift, qt_shift
             double [:] t_mean =  Pa.HorizontalMean(Gr, &DV.values[t_shift])
             double cp_, lam, lv, pv, pd, sv, sd
@@ -154,7 +154,7 @@ cdef class SurfaceBase:
         else:
             ql_shift = DV.get_varshift(Gr,'ql')
             qt_shift = PV.get_varshift(Gr, 'qt')
-            isotope_flux_of_evaporation(self.r_vapor_flux, Gr, Ref, Pa)
+            isotope_flux_of_evaporation(self.q_ti_flux, Gr, Ref, Pa)
             with nogil:
                 for i in xrange(gw, imax):
                     for j in xrange(gw, jmax):
@@ -178,7 +178,9 @@ cdef class SurfaceBase:
                         PV.tendencies[v_shift  + ijk] +=  self.v_flux[ij] * tendency_factor
                         PV.tendencies[s_shift  + ijk] +=  self.s_flux[ij] * tendency_factor
                         PV.tendencies[qt_shift + ijk] +=  self.qt_flux[ij] * tendency_factor
-                        PV.tendencies[r_vapor_shift + ijk] += self.r_vapor_flux[ij] * tendency_factor
+
+                        self.q_ti_flux[ij] = self.qt_flux[ij] * self.r_ev_flux[ij]
+                        PV.tendencies[q_ti_shift + ijk] += self.q_ti_flux[ij] * tendency_factor
 
         return
 
@@ -1341,7 +1343,7 @@ cpdef isotope_flux_of_evaporation(double[:] r_ev_flux_list, Grid.Grid Gr, Refere
         Py_ssize_t istride_2d = Gr.dims.nlg[1]
         Py_ssize_t gw = Gr.dims.gw
         double r_ev_flux 
-        double R_surface_water = 2.0052 # standard R value of V-SMOVW
+        double R_surface_water = 2.228e-3 # standard R value of V-SMOVW, based on the mass difference of isotopes
         double alpha_eq_surface # equilibrium fractionation factor
         double alpha_k # kinetic fractionation factor 
     alpha_k = 1
@@ -1369,12 +1371,12 @@ cdef double surface_relative_humidity(double t_surface, double qt_surface, doubl
     temp_t_sur = 1/t_surface
     ratio = L/R_v
     e_s = e_0 * exp(ratio*(temp_t0-temp_t_sur))
-    w_s = 0.622*(e_s/(p_surface/100))
+    w_s = 0.622 * (e_s/(p_surface/100))
     rh_surface = qt_surface/w_s
     return rh_surface
 # calculate equilibrium fractionation factor using given temperature, based on emperical equation from Majoube 1971
 cdef double equilibrium_fractionation_factor(double t) nogil:
     cdef:
         double alpha_eq
-    alpha_eq = exp( 1137/(t*t) - 0.4156/t - 2.0667e-3) 
+    alpha_eq = exp( 1137/(t * t) - 0.4156/t - 2.0667e-3) 
     return alpha_eq

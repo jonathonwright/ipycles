@@ -1774,10 +1774,11 @@ def interp_pchip(z_out, z_in, v_in, pchip_type=True):
 
 def initialize_Rayleigh(Grid.Grid Gr, PrognosticVariables.PrognosticVariables PV, ParallelMPI.ParallelMPI Pa):
     cdef:
-        Py_ssize_t r_vapor_varshift = PV.get_varshift(Gr,'r_vapor')
+        Py_ssize_t qt_iso_varshift = PV.get_varshift(Gr,'qt_iso')
         Py_ssize_t qt_varshift = PV.get_varshift(Gr, 'qt')
+        Py_ssize_t qv_iso_varshift = PV.get_varshift(Gr, 'qv_iso')
         Py_ssize_t i, j, k, ishift, jshift, ijk
-        double R_std_D = 2.0052 # standard R value of V-SMOVW
+        double R_std_D = 2.228e-3 # standard value of mass ratio of different isotopes of V-SMOVW
         double delta_temp_D
 
     for i in xrange(Gr.dims.nlg[0]):
@@ -1786,7 +1787,23 @@ def initialize_Rayleigh(Grid.Grid Gr, PrognosticVariables.PrognosticVariables PV
             jshift = j * Gr.dims.nlg[2]
             for k in xrange(Gr.dims.nlg[2]):
                 ijk = ishift + jshift + k
-                qt_ = PV.values[qt_varshift + ijk]*1000
-                delta_temp_D = 8.99*log(qt_/0.622)-42.9 # change from kg/kg to g/kg
-                PV.values[r_vapor_varshift + ijk] += (delta_temp_D/1000 + 1)*R_std_D # the unit of delta_temp_D is permil, need to be divided by 1000 and plus 1
-    return
+                qt_ = PV.values[qt_varshift + ijk] * 1000 # change from kg/kg to g/kg
+                delta_ = Rayleigh_distillation(qt_)
+                R_ = delta_to_R(delta_)
+                q_ti_ = R_to_qi(R_, PV.values[qt_varshift + ijk])
+                PV.values[qt_iso_varshift + ijk] += q_ti_ # the unit of q_ti should be kg/kg
+                PV.values[qv_iso_varshift + ijk] += q_ti_ # in initilizatio the qvi should be same as qti
+# Initialization based on Rayleig_distillation, using equations from Wei' 2018
+def Rayleigh_distillation(qt):
+    qt_ = qt * 1000
+    delta_ = 8.99 * log(qt_/0.622)-42.9
+    return delta_
+
+def delta_to_R(delta):
+    R_std = 2.228e-3
+    R_ = (delta/1000+1) * R_std
+    return R_
+
+def R_to_qi(R,qt):
+    qi_ = R * qt
+    return qi_
