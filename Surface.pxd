@@ -21,8 +21,6 @@ cdef class SurfaceBase:
         double [:] shf
         double [:] lhf
         double [:] b_flux
-        double [:] q_ti_flux
-        double [:] r_ev_flux
         bint dry_case
         double (*L_fp)(double T, double Lambda) nogil
         double (*Lambda_fp)(double T) nogil
@@ -65,7 +63,7 @@ cdef class SurfaceBomex(SurfaceBase):
         double qt_surface
         double buoyancy_flux
         double gustiness
-
+        double [:] qt_iso_flux
 
     cpdef initialize(self, Grid.Grid Gr, ReferenceState.ReferenceState Ref, NetCDFIO_Stats NS, ParallelMPI.ParallelMPI Pa)
     cpdef update(self, Grid.Grid Gr, ReferenceState.ReferenceState Ref, PrognosticVariables.PrognosticVariables PV,DiagnosticVariables.DiagnosticVariables DV,
@@ -217,5 +215,3 @@ cdef class SurfaceZGILS(SurfaceBase):
 
 
 cdef double compute_z0(double z1, double windspeed) nogil
-cdef double surface_relative_humidity(double t, double qt, double P) nogil
-cdef double equilibrium_fractionation_factor(double t) nogil

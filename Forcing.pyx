@@ -111,6 +111,7 @@ cdef class ForcingBomex:
         self.vg = np.zeros(Gr.dims.nlg[2],dtype=np.double,order='c')
         self.dtdt = np.zeros(Gr.dims.nlg[2],dtype=np.double,order='c')
         self.dqtdt = np.zeros(Gr.dims.nlg[2],dtype=np.double,order='c')
+        self.dqtidt = np.zeros(Gr.dims.nlg[2],dtype=np.double,order='c')
         self.subsidence = np.zeros(Gr.dims.nlg[2],dtype=np.double,order='c')
         self.coriolis_param = 0.376e-4 #s^{-1}
 
@@ -133,8 +134,10 @@ cdef class ForcingBomex:
                 #Set large scale drying
                 if Gr.zl_half[k] <= 300.0:
                     self.dqtdt[k] = -1.2e-8   #kg/(kg * s)
+                    self.dqtidt[k] = -2.6e-11   #kg/(kg * s) -> This value is calculated by dqtdt*R(the R is based on Rayleigh  as q = q_mean under 300, specifically q is about 0.0167) 
                 if Gr.zl_half[k] > 300.0 and Gr.zl_half[k] <= 500.0:
                     self.dqtdt[k] = -1.2e-8 + (Gr.zl_half[k] - 300.0)*(0.0 - -1.2e-8)/(500.0 - 300.0) #kg/(kg * s)
+                    self.dqtidt[k] = -2.6e-11 + (Gr.zl_half[k] - 300.0)*(0.0 - -2.6e-11)/(500.0 - 300.0) #kg/(kg * s)
 
                 #Set large scale subsidence
                 if Gr.zl_half[k] <= 1500.0:
@@ -173,6 +176,8 @@ cdef class ForcingBomex:
             Py_ssize_t qt_shift = PV.get_varshift(Gr, 'qt')
             Py_ssize_t t_shift = DV.get_varshift(Gr, 'temperature')
             Py_ssize_t ql_shift = DV.get_varshift(Gr,'ql')
+            Py_ssize_t qt_iso_shift = PV.get_varshift(Gr, 'qt_iso')
+            Py_ssize_t qt_tracer_shift = PV.get_varshift(Gr, 'qt_tracer')
             double qt, qv, p0, t
             double [:] umean = Pa.HorizontalMean(Gr, &PV.values[u_shift])
             double [:] vmean = Pa.HorizontalMean(Gr, &PV.values[v_shift])
@@ -198,11 +203,15 @@ cdef class ForcingBomex:
                         t  = DV.values[t_shift + ijk]
                         PV.tendencies[s_shift + ijk] += s_tendency_c(p0,qt,qv,t, self.dqtdt[k], self.dtdt[k])
                         PV.tendencies[qt_shift + ijk] += self.dqtdt[k]
+                        PV.tendencies[qt_tracer_shift + ijk] += self.dqtdt[k] 
+                        PV.tendencies[qt_iso_shift + ijk] += self.dqtidt[k] / R_std_O18 # make sure large scale qt_iso_flux and qt_flux are at same magnitude.
 
         apply_subsidence(&Gr.dims, &RS.rho0[0], &RS.rho0_half[0], &self.subsidence[0], &PV.values[s_shift], &PV.tendencies[s_shift])
         apply_subsidence(&Gr.dims, &RS.rho0[0], &RS.rho0_half[0], &self.subsidence[0], &PV.values[qt_shift], &PV.tendencies[qt_shift])
         apply_subsidence(&Gr.dims, &RS.rho0[0], &RS.rho0_half[0], &self.subsidence[0], &PV.values[u_shift], &PV.tendencies[u_shift])
         apply_subsidence(&Gr.dims, &RS.rho0[0], &RS.rho0_half[0], &self.subsidence[0], &PV.values[v_shift], &PV.tendencies[v_shift])
+        apply_subsidence(&Gr.dims, &RS.rho0[0], &RS.rho0_half[0], &self.subsidence[0], &PV.values[qt_iso_shift], &PV.tendencies[qt_iso_shift])
+        apply_subsidence(&Gr.dims, &RS.rho0[0], &RS.rho0_half[0], &self.subsidence[0], &PV.values[qt_tracer_shift], &PV.tendencies[qt_tracer_shift])
         return
 
     cpdef stats_io(self, Grid.Grid Gr, ReferenceState.ReferenceState RS,

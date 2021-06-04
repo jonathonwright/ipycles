@@ -62,7 +62,9 @@ def default():
     # parameters['Pr0'] = 1.0
     # parameters['beta_m'] = 4.8
     # parameters['beta_h'] = 7.8
-
+    
+    # Isotope related parameters 
+    parameters['R_std_O18'] = 2.228e-3 # can also used for value scaling of O18
 
     #############################
     # Users shouldn't modify below

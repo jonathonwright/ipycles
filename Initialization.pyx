@@ -1773,37 +1773,25 @@ def interp_pchip(z_out, z_in, v_in, pchip_type=True):
         return np.interp(z_out, z_in, v_in)
 
 def initialize_Rayleigh(Grid.Grid Gr, PrognosticVariables.PrognosticVariables PV, ParallelMPI.ParallelMPI Pa):
+    cdef extern from "isotope.h":
+        double Rayleigh_distillation(double qt) nogil
     cdef:
-        Py_ssize_t qt_iso_varshift = PV.get_varshift(Gr,'qt_iso')
+        Py_ssize_t qt_tracer_shift = PV.get_varshift(Gr, 'qt_tracer')
+        Py_ssize_t qv_tracer_shift = PV.get_varshift(Gr, 'qv_tracer')
+        Py_ssize_t qt_iso_shift = PV.get_varshift(Gr, 'qt_iso')
+        Py_ssize_t qv_iso_shift = PV.get_varshift(Gr, 'qv_iso')
         Py_ssize_t qt_varshift = PV.get_varshift(Gr, 'qt')
-        Py_ssize_t qv_iso_varshift = PV.get_varshift(Gr, 'qv_iso')
         Py_ssize_t i, j, k, ishift, jshift, ijk
-        double R_std_D = 2.228e-3 # standard value of mass ratio of different isotopes of V-SMOVW
-        double delta_temp_D
-
+        double qt,qi
     for i in xrange(Gr.dims.nlg[0]):
         ishift =  i * Gr.dims.nlg[1] * Gr.dims.nlg[2]
         for j in xrange(Gr.dims.nlg[1]):
             jshift = j * Gr.dims.nlg[2]
             for k in xrange(Gr.dims.nlg[2]):
                 ijk = ishift + jshift + k
-                qt_ = PV.values[qt_varshift + ijk] * 1000 # change from kg/kg to g/kg
-                delta_ = Rayleigh_distillation(qt_)
-                R_ = delta_to_R(delta_)
-                q_ti_ = R_to_qi(R_, PV.values[qt_varshift + ijk])
-                PV.values[qt_iso_varshift + ijk] += q_ti_ # the unit of q_ti should be kg/kg
-                PV.values[qv_iso_varshift + ijk] += q_ti_ # in initilizatio the qvi should be same as qti
-# Initialization based on Rayleig_distillation, using equations from Wei' 2018
-def Rayleigh_distillation(qt):
-    qt_ = qt * 1000
-    delta_ = 8.99 * log(qt_/0.622)-42.9
-    return delta_
-
-def delta_to_R(delta):
-    R_std = 2.228e-3
-    R_ = (delta/1000+1) * R_std
-    return R_
-
-def R_to_qi(R,qt):
-    qi_ = R * qt
-    return qi_
+                qt = PV.values[qt_varshift + ijk] # change from kg/kg to g/kg
+                qi = Rayleigh_distillation(qt)
+                PV.values[qt_tracer_shift + ijk] = qt
+                PV.values[qv_tracer_shift + ijk] = qt
+                PV.values[qt_iso_shift + ijk] = qi / R_std_O18 # make sure qt_iso and qt are in same magnitude
+                PV.values[qv_iso_shift + ijk] = qi / R_std_O18 # make sure qv_iso and qv are in same magnitude

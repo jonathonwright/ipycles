@@ -22,6 +22,15 @@ import cython
 cimport numpy as np
 import numpy as np
 
+include 'parameters.pxi'
+
+cdef extern from "isotope.h":
+    void statsIO_isotope_scaling_magnitude(Grid.DimStruct *dims, double *tmp_values) nogil
+    void iso_equilibrium_fractionation_No_Microphysics(Grid.DimStruct *dims, int water_type, double *t, double *qt, double *qv, 
+        double *ql, double *qt_iso, double *qv_iso, double *ql_iso) nogil
+    void delta_isotopologue(Grid.DimStruct *dims, double *qt, double *qv, double *ql, 
+        double *qt_iso, double *qv_iso, double *ql_iso, double *delta_qt, double *delta_qv, double *delta_ql) nogil
+
 def IsotopeTracersFactory(namelist):
     try:
         use_isotope_tracers = namelist['isotopetracers']['use_tracers']
@@ -43,128 +52,123 @@ def IsotopeTracersFactory(namelist):
 cdef class IsotopeTracersNone:
     def __init__(self):
         return
-    cpdef initialize(self, namelist, Grid.Grid Gr,  PrognosticVariables.PrognosticVariables PV, ReferenceState.ReferenceState Ref,
+    cpdef initialize(self, namelist, Grid.Grid Gr,  PrognosticVariables.PrognosticVariables PV,
                      DiagnosticVariables.DiagnosticVariables DV, NetCDFIO_Stats NS, ParallelMPI.ParallelMPI Pa):
         Pa.root_print('initialized with isotopenone')
         return
-    cpdef update(self, Grid.Grid Gr, ReferenceState.ReferenceState Ref, PrognosticVariables.PrognosticVariables PV,
-                 DiagnosticVariables.DiagnosticVariables DV, TimeStepping.TimeStepping TS, ParallelMPI.ParallelMPI Pa):
+    cpdef update(self, Grid.Grid Gr,  PrognosticVariables.PrognosticVariables PV,
+                 DiagnosticVariables.DiagnosticVariables DV, ParallelMPI.ParallelMPI Pa):
         return
     cpdef stats_io(self, Grid.Grid Gr, PrognosticVariables.PrognosticVariables PV, DiagnosticVariables.DiagnosticVariables DV,
-                   TimeStepping.TimeStepping TS, NetCDFIO_Stats NS, ParallelMPI.ParallelMPI Pa):
+                   NetCDFIO_Stats NS, ParallelMPI.ParallelMPI Pa):
         return
 
 cdef class IsotopeTracers_NoMicrophysics:
     def __init__(self, namelist):
         return
-    cpdef initialize(self, namelist, Grid.Grid Gr, PrognosticVariables.PrognosticVariables PV, ReferenceState.ReferenceState Ref, 
+    cpdef initialize(self, namelist, Grid.Grid Gr, PrognosticVariables.PrognosticVariables PV, 
                     DiagnosticVariables.DiagnosticVariables DV, NetCDFIO_Stats NS, ParallelMPI.ParallelMPI Pa):
-        Pa.root_print('initialized with isotopehave')
+        Pa.root_print('initialized with IsotopeTracer with No Microphysics')
+        # Prognostic variable: standerd water tracer of qt, ql and qv, which are totally same as qt, ql and qv 
+        PV.add_variable('qt_tracer', 'kg/kg','qt_tracer','Total water tracer specific humidity','sym', "scalar", Pa)
+        PV.add_variable('qv_tracer', 'kg/kg','qv_tracer','Vapor water tracer specific humidity','sym', 'scalar', Pa)
+        PV.add_variable('ql_tracer', 'kg/kg','ql_tracer','Cloud liquid water tracer specific humidity','sym', 'scalar', Pa)
+        
         # Prognostic variable: qt_iso, total water isotopic specific humidity, defined as the ratio of isotopic mass of H2O18 to moist air.
         PV.add_variable('qt_iso', 'kg/kg','qt_isotope','Total water isotopic specific humidity','sym', "scalar", Pa)
-        # Diagnostic variables: ql_iso, cloud liquid water isotopic specific humidity, defined as the ratio of isotopic mass of H2O18 in cloud droplets to moist air
-        #                       qv_iso, vapor water isotopic specific humidity, defined as the ratio of isotopic mass of H2O18 in water vapor to moist air  
-        #                       r_ql_iso, isotope ratio of H2O18 in liqudi water, defined as ql_iso/ql
-        #                       r_qv_iso, isotope ratio of H2O18 in water vapor, defined as qv_iso/qv
-        PV.add_variable('ql_iso', 'kg/kg','ql_isotope','Cloud liquid water isotopic specific humidity','sym', 'scalar', Pa)
         PV.add_variable('qv_iso', 'kg/kg','qv_isotope','Vapor water isotopic specific humidity','sym', 'scalar', Pa)
-        DV.add_variables('r_ql_iso', 'permil','isotope_ratio_liquid','isotope ratio of liqudi water','sym', Pa)
-        DV.add_variables('r_qv_iso_in_cloud', 'permil','isotope_ratio_vapor_in_cloud','isotope ratio of water vapor during fractionation','sym', Pa)
-        DV.add_variables('r_qv_iso', 'permil','isotope_ratio_vapor','isotope ratio of water vapor','sym', Pa)
-        
-        NS.add_profile('qt_iso', Gr, Pa, units=r'kg/kg', nice_name='qt_isotope', desc='Total water isotopic specific humidity')
-        NS.add_profile('ql_iso', Gr, Pa, units=r'kg/kg', nice_name='ql_isotope', desc='Cloud liquid water isotopic specific humidity')
-        NS.add_profile('qv_iso', Gr, Pa, units=r'kg/kg', nice_name='qv_isotope', desc='Vapor water isotopic specific humidity')
-        NS.add_profile('r_ql_iso', Gr, Pa, units=r'permil', nice_name='isotope_ratio_liquid', desc='isotope ratio of liqudi water')
-        NS.add_profile('r_qv_iso_in_cloud', Gr, Pa, units=r'permil', nice_name='isotope_ratio_vapor_in_cloud', desc='isotope ratio of water vapor during fractionation')
-        NS.add_profile('r_qv_iso', Gr, Pa, units=r'permil', nice_name='isotope_ratio_vapor', desc='isotope ratio of water vapor')
-        
+        PV.add_variable('ql_iso', 'kg/kg','ql_isotope','Cloud liquid water isotopic specific humidity','sym', 'scalar', Pa)
+
+        # DV isotope tracer ql_iso and qv_iso
+        DV.add_variables('qv_iso_DV', 'kg/kg', r'qv_isotope', 'Vapor isotope DV', 'sym', Pa)
+        DV.add_variables('ql_iso_DV', 'kg/kg', r'ql_isotope', 'Liquid isotope DV', 'sym', Pa)
+
+        # DV delta of (qt_iso, qt), (qv_iso, qv) and (ql_iso, ql), which will be calculated during fractionation
+        DV.add_variables('delta_qt', 'permil', 'delta_qt', 'delta of qt', 'sym', Pa)
+        DV.add_variables('delta_qv', 'permil', 'delta_qv', 'delta of qv', 'sym', Pa)
+        DV.add_variables('delta_ql', 'permil', 'delta_ql', 'delta of ql', 'sym', Pa)
+        DV.add_variables('delta_qv_DV', 'permil', 'delta_qv_DV', 'delta of qv when qv_iso is DV', 'sym', Pa)
+        DV.add_variables('delta_ql_DV', 'permil', 'delta_ql_DV', 'delta of qv when qv_iso is DV', 'sym', Pa)
+
+        # finial output results after selection and scaling
+        NS.add_profile('qt_iso', Gr, Pa, 'kg/kg', '', 'Finial result of total water isotopic specific humidity')
+        NS.add_profile('qv_iso', Gr, Pa, 'kg/kg', '', 'Finial result of vapor isotopic specific humidity')
+        NS.add_profile('ql_iso', Gr, Pa, 'kg/kg', '', 'Finial result of liquid isotopic sepcific humidity')
+        NS.add_profile('delta_qt', Gr, Pa, 'permil', '', 'delta of qt, calculated by qt_iso/qt during fractioantion')
+        NS.add_profile('delta_qv', Gr, Pa, 'permil', '', 'delta of qv, calculated by qt_iso/qt during fractioantion')
         return
         
-    cpdef update(self, Grid.Grid Gr, ReferenceState.ReferenceState Ref, PrognosticVariables.PrognosticVariables PV,
-                 DiagnosticVariables.DiagnosticVariables DV, TimeStepping.TimeStepping TS, ParallelMPI.ParallelMPI Pa):
+    cpdef update(self, Grid.Grid Gr, PrognosticVariables.PrognosticVariables PV,
+                 DiagnosticVariables.DiagnosticVariables DV, ParallelMPI.ParallelMPI Pa):
         cdef:
-            Py_ssize_t i, j, k, ijk
-            Py_ssize_t gw = Gr.dims.gw
-            Py_ssize_t ishift
-            Py_ssize_t jshift 
-            Py_ssize_t qv_varshift = DV.get_varshift(Gr,'qv')
-            Py_ssize_t ql_varshift = DV.get_varshift(Gr,'ql')
-            Py_ssize_t t_varshift = DV.get_varshift(Gr,'temperature')
-            Py_ssize_t qt_iso_varshift = PV.get_varshift(Gr,'qt_iso')
-            Py_ssize_t ql_iso_varshift = PV.get_varshift(Gr,'ql_iso')
-            Py_ssize_t qv_iso_varshift = PV.get_varshift(Gr,'qv_iso')
-            Py_ssize_t r_ql_iso_varshift = DV.get_varshift(Gr,'r_ql_iso')
-            Py_ssize_t r_qv_iso_varshift = DV.get_varshift(Gr,'r_qv_iso')
-            Py_ssize_t r_qv_iso_in_cloud_varshift = DV.get_varshift(Gr,'r_qv_iso_in_cloud')
-            Py_ssize_t qt_varshift = PV.get_varshift(Gr, 'qt')
-            double alpha_eq
-            double q_li
-            double q_vi
+            Py_ssize_t t_shift = DV.get_varshift(Gr,'temperature')
+            Py_ssize_t qt_shift = PV.get_varshift(Gr,'qt')
+            Py_ssize_t qv_shift = DV.get_varshift(Gr,'qv')
+            Py_ssize_t ql_shift = DV.get_varshift(Gr,'ql')
+            Py_ssize_t tracer_type = 0
+            Py_ssize_t HDO_type = 1
+            Py_ssize_t H2O18_type = 2
+        # fractionation of standard water tracer
+        cdef: 
+            Py_ssize_t qt_tracer_shift = PV.get_varshift(Gr,'qt_tracer')
+            Py_ssize_t qv_tracer_shift = PV.get_varshift(Gr,'qv_tracer')
+            Py_ssize_t ql_tracer_shift = PV.get_varshift(Gr,'ql_tracer')
+        iso_equilibrium_fractionation_No_Microphysics(&Gr.dims, tracer_type, &DV.values[t_shift], &PV.values[qt_shift], &DV.values[qv_shift], &DV.values[ql_shift], 
+                &PV.values[qt_tracer_shift], &PV.values[qv_tracer_shift], &PV.values[ql_tracer_shift])
 
-        # Fractionation during phase changes
-        with cython.boundscheck(False):
-            with nogil:
-                for i in xrange(Gr.dims.nlg[0]):
-                    ishift =  i * Gr.dims.nlg[1] * Gr.dims.nlg[2]
-                    for j in xrange(Gr.dims.nlg[1]):
-                        jshift = j * Gr.dims.nlg[2]
-                        for k in xrange(Gr.dims.nlg[2]):
-                            ijk = ishift + jshift + k
-                            alpha_eq = 1 / equilibrium_fractionation_factor(DV.values[t_varshift + ijk])
-                            if DV.values[ql_varshift + ijk] > 0:
-                                q_li = q_li_equilibrium_fractionation(PV.values[qt_iso_varshift + ijk], DV.values[qv_varshift + ijk], DV.values[ql_varshift + ijk], alpha_eq)
-                                PV.values[ql_iso_varshift + ijk] = q_li
-                                DV.values[r_ql_iso_varshift + ijk] = q_li / DV.values[ql_varshift + ijk]
-                                q_vi = PV.values[qt_iso_varshift + ijk] - q_li
-                                PV.values[qv_iso_varshift + ijk] = q_vi
-                                DV.values[r_qv_iso_varshift + ijk] = q_vi / DV.values[qv_varshift + ijk]
-                                DV.values[r_qv_iso_in_cloud_varshift + ijk] = q_vi / DV.values[qv_varshift + ijk]
-                                
-                            else:
-                                q_li = 0.0
-                                DV.values[r_ql_iso_varshift + ijk] = 0.0
-                                PV.values[ql_iso_varshift + ijk] = q_li
-                                q_vi = PV.values[qt_iso_varshift + ijk] - q_li
-                                PV.values[qv_iso_varshift + ijk] = q_vi
-                                DV.values[r_qv_iso_varshift + ijk] = q_vi / DV.values[qv_varshift + ijk]
-                                DV.values[r_qv_iso_in_cloud_varshift + ijk] = 0.0
-    
+        # fractionation of isotopes when qv and ql are PVs
+        cdef:
+            Py_ssize_t qt_iso_shift = PV.get_varshift(Gr,'qt_iso')
+            Py_ssize_t qv_iso_shift = PV.get_varshift(Gr,'qv_iso')
+            Py_ssize_t ql_iso_shift = PV.get_varshift(Gr,'ql_iso')
+            Py_ssize_t delta_qt_shift = DV.get_varshift(Gr, 'delta_qt')
+            Py_ssize_t delta_qv_shift = DV.get_varshift(Gr, 'delta_qv')
+            Py_ssize_t delta_ql_shift = DV.get_varshift(Gr, 'delta_ql')
+        
+        iso_equilibrium_fractionation_No_Microphysics(&Gr.dims, H2O18_type, &DV.values[t_shift], &PV.values[qt_shift], &DV.values[qv_shift], &DV.values[ql_shift], 
+                &PV.values[qt_iso_shift], &PV.values[qv_iso_shift], &PV.values[ql_iso_shift])
+        delta_isotopologue(&Gr.dims, &PV.values[qt_shift], &DV.values[qv_shift], &DV.values[ql_shift], &PV.values[qt_iso_shift], &PV.values[qv_iso_shift], &PV.values[ql_iso_shift],
+                &DV.values[delta_qt_shift], &DV.values[delta_qv_shift], &DV.values[delta_ql_shift]) 
+
+        # fractionation of isotopes when qv and ql are DVs
+        cdef:
+            Py_ssize_t qv_iso_DV_shift = DV.get_varshift(Gr,'qv_iso_DV')
+            Py_ssize_t ql_iso_DV_shift = DV.get_varshift(Gr,'ql_iso_DV')
+            Py_ssize_t delta_qv_DV_shift = DV.get_varshift(Gr,'delta_qv_DV')
+            Py_ssize_t delta_ql_DV_shift = DV.get_varshift(Gr,'delta_ql_DV')
+            double [:] tmp_delta = np.zeros(Gr.dims.npg, dtype = np.double, order='c')
+        iso_equilibrium_fractionation_No_Microphysics(&Gr.dims, H2O18_type, &DV.values[t_shift], &PV.values[qt_shift], &DV.values[qv_shift], &DV.values[ql_shift], 
+                &PV.values[qt_iso_shift], &DV.values[qv_iso_DV_shift], &DV.values[ql_iso_DV_shift])
+        delta_isotopologue(&Gr.dims, &PV.values[qt_shift], &DV.values[qv_shift], &DV.values[ql_shift], &PV.values[qt_iso_shift], &DV.values[qv_iso_DV_shift], &DV.values[ql_iso_DV_shift],
+                &tmp_delta[0], &DV.values[delta_qv_DV_shift], &DV.values[delta_ql_DV_shift])  
+
+
     cpdef stats_io(self, Grid.Grid Gr, PrognosticVariables.PrognosticVariables PV, DiagnosticVariables.DiagnosticVariables DV,
-                   TimeStepping.TimeStepping TS, NetCDFIO_Stats NS, ParallelMPI.ParallelMPI Pa):
+                   NetCDFIO_Stats NS, ParallelMPI.ParallelMPI Pa):
         cdef:
-            Py_ssize_t qt_iso_varshift = PV.get_varshift(Gr,'qt_iso')
-            Py_ssize_t ql_iso_varshift = PV.get_varshift(Gr,'ql_iso')
-            Py_ssize_t qv_iso_varshift = PV.get_varshift(Gr,'qv_iso')
-            Py_ssize_t r_ql_iso_varshift = DV.get_varshift(Gr,'r_ql_iso')
-            Py_ssize_t r_qv_iso_varshift = DV.get_varshift(Gr,'r_qv_iso')
-            Py_ssize_t r_qv_iso_in_cloud_varshift = DV.get_varshift(Gr,'r_qv_iso_in_cloud')
+            double [:] tmp = np.zeros(Gr.dims.nlg[2],dtype=np.double,order='c')
+            Py_ssize_t qt_iso_shift = PV.get_varshift(Gr,'qt_iso')
+            Py_ssize_t ql_iso_DV_shift = DV.get_varshift(Gr,'ql_iso_DV')
+            Py_ssize_t qv_iso_DV_shift = DV.get_varshift(Gr,'qv_iso_DV')
+            Py_ssize_t delta_qt_shift = DV.get_varshift(Gr,'delta_qt')
+            Py_ssize_t delta_qv_shift = DV.get_varshift(Gr,'delta_qv')
 
-        tmp = Pa.HorizontalMean(Gr, &PV.values[qt_iso_varshift])
+        tmp = Pa.HorizontalMean(Gr, &PV.values[qt_iso_shift])
+        statsIO_isotope_scaling_magnitude(&Gr.dims, &tmp[0]) # scaling back to correct magnitude
         NS.write_profile('qt_iso', tmp[Gr.dims.gw:-Gr.dims.gw], Pa)
 
-        tmp = Pa.HorizontalMean(Gr, &PV.values[ql_iso_varshift])
-        NS.write_profile('ql_iso', tmp[Gr.dims.gw:-Gr.dims.gw], Pa)
-
-        tmp = Pa.HorizontalMean(Gr, &PV.values[qv_iso_varshift])
-        NS.write_profile('qv_iso', tmp[Gr.dims.gw:-Gr.dims.gw], Pa)   
-
-        tmp = Pa.HorizontalMean(Gr, &DV.values[r_ql_iso_varshift])
-        NS.write_profile('r_ql_iso', tmp[Gr.dims.gw:-Gr.dims.gw], Pa)
-
-        tmp = Pa.HorizontalMean(Gr, &DV.values[r_qv_iso_varshift])
-        NS.write_profile('r_qv_iso', tmp[Gr.dims.gw:-Gr.dims.gw], Pa)
+        tmp = Pa.HorizontalMean(Gr, &DV.values[qv_iso_DV_shift])
+        statsIO_isotope_scaling_magnitude(&Gr.dims, &tmp[0]) # scaling back to correct magnitude
+        NS.write_profile('qv_iso', tmp[Gr.dims.gw:-Gr.dims.gw], Pa)
         
-        tmp = Pa.HorizontalMean(Gr, &DV.values[r_qv_iso_in_cloud_varshift])
-        NS.write_profile('r_qv_iso_in_cloud', tmp[Gr.dims.gw:-Gr.dims.gw], Pa)
-
-# calculate equilibrium fractionation factor using given temperature, based on emperical equation from Majoube 1971
-cdef double equilibrium_fractionation_factor(double t) nogil:
-    cdef double alpha_eq
-    alpha_eq = exp( 1137/(t*t) - 0.4156/t - 2.0667e-3) 
-    return alpha_eq
-# calculate qli during equilibrium fractionation, based on equation 66 from Wei' 2018 
-cdef double q_li_equilibrium_fractionation(double q_ti, double qv, double ql, double alpha_eq_vl) nogil:
-    cdef double q_li
-    q_li = q_ti/(1+(qv/ql)*alpha_eq_vl)
-    return q_li
+        tmp = Pa.HorizontalMean(Gr, &DV.values[ql_iso_DV_shift])
+        statsIO_isotope_scaling_magnitude(&Gr.dims, &tmp[0]) # scaling back to correct magnitude
+        NS.write_profile('ql_iso', tmp[Gr.dims.gw:-Gr.dims.gw], Pa)
+        
+        tmp = Pa.HorizontalMean(Gr, &DV.values[delta_qt_shift]) # scaling back to correct magnitude
+        NS.write_profile('delta_qt', tmp[Gr.dims.gw:-Gr.dims.gw], Pa)   
+        
+        tmp = Pa.HorizontalMean(Gr, &DV.values[delta_qv_shift]) # scaling back to correct magnitude
+        NS.write_profile('delta_qv', tmp[Gr.dims.gw:-Gr.dims.gw], Pa)   
+        return
+        
