@@ -21,6 +21,8 @@ cdef class NetCDFIO_Stats:
         self.root_grp = None
         self.profiles_grp = None
         self.ts_grp = None
+        self.profile_3d_grp = None
+        self.horizontal_profile_grp = None
         return
 
     @cython.wraparound(True)
@@ -29,7 +31,18 @@ cdef class NetCDFIO_Stats:
         self.last_output_time = 0.0
         self.uuid = str(namelist['meta']['uuid'])
         self.frequency = namelist['stats_io']['frequency']
-
+        try:
+            if namelist['stats_io']['3d_profile'] == True:
+                self.stats_3d_profile = 1
+                print 'stats initialized with 3d_profile variables'
+        except:
+            self.stats_3d_profile = 0
+        try:
+            if namelist['stats_io']['horizontal_profile'] == True:
+                self.stats_horizontal_profile = 1
+                print 'stats initialized with horizontal_profile variables'
+        except:
+            self.stats_3d_profile = 0
         # Setup the statistics output path
         outpath = str(os.path.join(namelist['output']['output_root'] + 'Output.' + namelist['meta']['simname'] + '.' + self.uuid[-5:]))
 
@@ -71,6 +84,10 @@ cdef class NetCDFIO_Stats:
             self.root_grp = nc.Dataset(self.path_plus_file, 'r+', format='NETCDF4')
             self.profiles_grp = self.root_grp.groups['profiles']
             self.ts_grp = self.root_grp.groups['timeseries']
+            if self.stats_3d_profile == 1:
+                self.profile_3d_grp = self.root_grp.groups['3d_profiles']
+            if self.stats_horizontal_profile == 1:
+                self.horizontal_profile_grp = self.root_grp.groups['horizontal_profiles']
         return
 
     cpdef close_files(self, ParallelMPI.ParallelMPI Pa):
@@ -114,6 +131,47 @@ cdef class NetCDFIO_Stats:
         ts_grp = root_grp.createGroup('timeseries')
         ts_grp.createDimension('t', None)
         ts_grp.createVariable('t', 'f8', ('t'))
+        
+        if self.stats_3d_profile == 1:
+            profile_3d_grp = root_grp.createGroup('3d_profiles')
+            profile_3d_grp.createDimension('x', Gr.dims.n[0])
+            profile_3d_grp.createDimension('y', Gr.dims.n[1])
+            profile_3d_grp.createDimension('z', Gr.dims.n[2])
+            profile_3d_grp.createDimension('t', None)
+
+            x = profile_3d_grp.createVariable('x', 'f8', ('x'))
+            x[:] = np.array(Gr.x[Gr.dims.gw:-Gr.dims.gw])
+            y = profile_3d_grp.createVariable('y', 'f8', ('y'))
+            y[:] = np.array(Gr.y[Gr.dims.gw:-Gr.dims.gw])
+            z = profile_3d_grp.createVariable('z', 'f8', ('z'))
+            z[:] = np.array(Gr.z[Gr.dims.gw:-Gr.dims.gw])  
+
+            x_half = profile_3d_grp.createVariable('x_half', 'f8', ('x'))
+            x_half[:] = np.array(Gr.x_half[Gr.dims.gw:-Gr.dims.gw])      
+            y_half = profile_3d_grp.createVariable('y_half', 'f8', ('y'))
+            y_half[:] = np.array(Gr.y_half[Gr.dims.gw:-Gr.dims.gw])
+            z_half = profile_3d_grp.createVariable('z_half', 'f8', ('z'))
+            z_half[:] = np.array(Gr.z_half[Gr.dims.gw:-Gr.dims.gw])      
+
+            profile_3d_grp.createVariable('t', 'f8', ('t'))
+        
+        if self.stats_horizontal_profile == 1:
+            horizontal_profile_grp = root_grp.createGroup('horizontal_profiles')
+            horizontal_profile_grp.createDimension('x', Gr.dims.n[0])
+            horizontal_profile_grp.createDimension('y', Gr.dims.n[1])
+            horizontal_profile_grp.createDimension('t', None)
+
+            x = horizontal_profile_grp.createVariable('x', 'f8', ('x'))
+            x[:] = np.array(Gr.x[Gr.dims.gw:-Gr.dims.gw])
+            y = horizontal_profile_grp.createVariable('y', 'f8', ('y'))
+            y[:] = np.array(Gr.y[Gr.dims.gw:-Gr.dims.gw])
+
+            x_half = horizontal_profile_grp.createVariable('x_half', 'f8', ('x'))
+            x_half[:] = np.array(Gr.x_half[Gr.dims.gw:-Gr.dims.gw])      
+            y_half = horizontal_profile_grp.createVariable('y_half', 'f8', ('y'))
+            y_half[:] = np.array(Gr.y_half[Gr.dims.gw:-Gr.dims.gw])
+
+            horizontal_profile_grp.createVariable('t', 'f8', ('t'))
 
         root_grp.close()
         return
@@ -145,6 +203,57 @@ cdef class NetCDFIO_Stats:
 
             root_grp.close()
 
+        return
+    cpdef add_3d_profile(self, var_name, Grid.Grid Gr, ParallelMPI.ParallelMPI Pa, units=None, nice_name=None, desc=None):
+        
+        print '3d_profile', var_name, units, nice_name, desc
+        
+        if Pa.rank == 0:
+            root_grp = nc.Dataset(self.path_plus_file, 'r+', format='NETCDF4')
+            profile_3d_grp = root_grp.groups['profiles_3d']
+            new_var = profile_3d_grp.createVariable(var_name, 'f8', ('t', 'x', 'y', 'z'))
+            
+            if units is not None:
+                new_var.setncattr('units', str(units))
+            else:
+                new_var.setncattr('units', 'None')
+
+            if nice_name is not None:
+                new_var.setncattr('nice_name', str(nice_name))
+            else:
+                new_var.setncattr('nice_name', 'None')
+
+            if desc is not None:
+                new_var.setncattr('description', str(desc))
+            else:
+                new_var.setncattr('description', 'None')
+            root_grp.close()
+        return
+
+    cpdef add_horizontal_profile(self, var_name, Grid.Grid Gr, ParallelMPI.ParallelMPI Pa, units=None, nice_name=None, desc=None):
+        
+        print 'horizontal_profile', var_name, units, nice_name, desc
+        
+        if Pa.rank == 0:
+            root_grp = nc.Dataset(self.path_plus_file, 'r+', format='NETCDF4')
+            profile_3d_grp = root_grp.groups['horizontal_profile']
+            new_var = profile_3d_grp.createVariable(var_name, 'f8', ('t', 'x', 'y'))
+            
+            if units is not None:
+                new_var.setncattr('units', str(units))
+            else:
+                new_var.setncattr('units', 'None')
+
+            if nice_name is not None:
+                new_var.setncattr('nice_name', str(nice_name))
+            else:
+                new_var.setncattr('nice_name', 'None')
+
+            if desc is not None:
+                new_var.setncattr('description', str(desc))
+            else:
+                new_var.setncattr('description', 'None')
+            root_grp.close()
         return
 
     cpdef add_reference_profile(self, var_name, Grid.Grid Gr, ParallelMPI.ParallelMPI Pa, units=None, nice_name=None,
@@ -218,7 +327,20 @@ cdef class NetCDFIO_Stats:
             var[-1, :] = np.array(data)
             #root_grp.close()
         return
+    cpdef write_3d_profile(self, var_name, double [:,:,:] data, ParallelMPI.ParallelMPI Pa):
+        if Pa.rank == 0:
+            var = self.profile_3d_grp.variables[var_name]
+            print np.shape(data), np.shape(var[:])
+            var[-1, :] = np.array(data)
+        return
 
+    cpdef write_horizontal_profile(self, var_name, double [:,:] data, ParallelMPI.ParallelMPI Pa):
+        if Pa.rank == 0:
+            var = self.horizontal_profile_grp.variables[var_name]
+            print np.shape(data), np.shape(var[:]), 
+            var[-1, :] = np.array(data)
+        return
+    
     cpdef write_reference_profile(self, var_name, double[:] data, ParallelMPI.ParallelMPI Pa):
         '''
         Writes a profile to the reference group NetCDF Stats file. The variable must have already been
@@ -248,10 +370,6 @@ cdef class NetCDFIO_Stats:
 
     cpdef write_simulation_time(self, double t, ParallelMPI.ParallelMPI Pa):
         if Pa.rank == 0:
-            #root_grp = nc.Dataset(self.path_plus_file, 'r+', format='NETCDF4')
-            #profile_grp = root_grp.groups['profiles']
-            #ts_grp = root_grp.groups['timeseries']
-
             # Write to profiles group
             profile_t = self.profiles_grp.variables['t']
             profile_t[profile_t.shape[0]] = t
@@ -260,7 +378,15 @@ cdef class NetCDFIO_Stats:
             ts_t = self.ts_grp.variables['t']
             ts_t[ts_t.shape[0]] = t
 
-            #root_grp.close()
+            # Write to 3d_profiles group
+            if self.stats_3d_profile == 1: 
+                profile_3d_t = self.profile_3d_grp.variables['t']
+                profile_3d_t[profile_3d_t.shape[0]] = t
+            
+            # Write to horizontal_profiles group
+            if self.stats_horizontal_profile == 1:
+                profile_horizontal_t = self.horizontal_profile_grp.variables['t']
+                profile_horizontal_t[profile_horizontal_t.shape[0]] = t
         return
 
 cdef class NetCDFIO_Fields:

@@ -8,6 +8,10 @@ cdef class NetCDFIO_Stats:
         object root_grp
         object profiles_grp
         object ts_grp
+        object horizontal_profile_grp
+        object profile_3d_grp
+        int stats_3d_profile
+        int stats_horizontal_profile
 
         str stats_file_name
         str stats_path
@@ -22,11 +26,15 @@ cdef class NetCDFIO_Stats:
     cpdef initialize(self, dict namelist, Grid.Grid Gr, ParallelMPI.ParallelMPI Pa)
     cpdef setup_stats_file(self, Grid.Grid Gr, ParallelMPI.ParallelMPI Pa)
     cpdef add_profile(self, var_name, Grid.Grid Gr, ParallelMPI.ParallelMPI Pa, units=*, nice_name=*, desc=*)
+    cpdef add_horizontal_profile(self, var_name, Grid.Grid Gr, ParallelMPI.ParallelMPI Pa, units=*, nice_name=*, desc=*)
+    cpdef add_3d_profile(self, var_name, Grid.Grid Gr, ParallelMPI.ParallelMPI Pa, units=*, nice_name=*, desc=*)
     cpdef add_reference_profile(self, var_name, Grid.Grid Gr, ParallelMPI.ParallelMPI Pa, units=*, nice_name=*, desc=*, bint  z_full=*)
     cpdef add_ts(self, var_name, Grid.Grid Gr, ParallelMPI.ParallelMPI Pa, units=*, nice_name=*, desc=*)
     cpdef open_files(self, ParallelMPI.ParallelMPI Pa)
     cpdef close_files(self, ParallelMPI.ParallelMPI Pa)
     cpdef write_profile(self, var_name, double[:] data, ParallelMPI.ParallelMPI Pa)
+    cpdef write_horizontal_profile(self, var_name, double[:,:] data, ParallelMPI.ParallelMPI Pa)
+    cpdef write_3d_profile(self, var_name, double[:,:,:] data, ParallelMPI.ParallelMPI Pa)
     cpdef write_reference_profile(self, var_name, double[:] data, ParallelMPI.ParallelMPI Pa)
     cpdef write_ts(self, var_name, double data, ParallelMPI.ParallelMPI Pa)
     cpdef write_simulation_time(self, double t, ParallelMPI.ParallelMPI Pa)

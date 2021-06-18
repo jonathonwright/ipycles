@@ -539,6 +539,67 @@ cdef class ParallelMPI:
 
         return mean
 
+ 
+    cdef double[:,:,:] Array_to_3d_xyz(self, Grid.Grid Gr, double *values):
+        cdef:
+            int i,j,k,ijk
+            int imin = Gr.dims.gw
+            int jmin = Gr.dims.gw
+            int kmin = 0
+            int imax = Gr.dims.nlg[0] - Gr.dims.gw
+            int jmax = Gr.dims.nlg[1] - Gr.dims.gw
+            int kmax = Gr.dims.nlg[2]
+            int istride = Gr.dims.nlg[1] * Gr.dims.nlg[2]
+            int jstride = Gr.dims.nlg[2]
+            int ishift, jshift
+            double [:,:,:] np_array_3d = np.zeros((Gr.dims.nlg[0],Gr.dims.nlg[1],Gr.dims.nlg[2]), dtype = np.double, order='c')
+        with nogil:
+            for i in xrange(imin,imax):
+                ishift = i * istride
+                for j in xrange(jmin,jmax):
+                    jshift = j * jstride
+                    for k in xrange(kmin,kmax):
+                        ijk = ishift + jshift + k
+                        np_array_3d[i][j][k] = values[ijk]
+        return np_array_3d
+
+    cdef double[:,:] HorizontalMean_xy(self, Grid.Grid Gr, double *values):
+        cdef:
+            double [:,:] mean_local = np.zeros((Gr.dims.nlg[0],Gr.dims.nlg[1]),dtype=np.double,order='c')
+            double [:,:] mean = np.zeros((Gr.dims.nlg[0],Gr.dims.nlg[1]),dtype=np.double,order='c')
+            int i,j,k,ijk
+            int imin = Gr.dims.gw
+            int jmin = Gr.dims.gw
+            int kmin = 0
+            int imax = Gr.dims.nlg[0] - Gr.dims.gw
+            int jmax = Gr.dims.nlg[1] - Gr.dims.gw
+            int kmax = Gr.dims.nlg[2]
+            int istride = Gr.dims.nlg[1] * Gr.dims.nlg[2]
+            int jstride = Gr.dims.nlg[2]
+            int ishift, jshift
+            double n_vertical_i = 1.0/np.double(Gr.dims.n[2])
+
+        with nogil:
+            for i in xrange(imin,imax):
+                ishift = i * istride
+                for j in xrange(jmin,jmax):
+                    jshift = j * jstride
+                    for k in xrange(kmin,kmax):
+                        ijk = ishift + jshift + k
+                        mean_local[i][j] += values[ijk] 
+       
+        mpi.MPI_Allreduce(&mean_local[0,0],&mean[0,0],Gr.dims.nlg[0]*Gr.dims.nlg[1],
+                          mpi.MPI_DOUBLE,mpi.MPI_SUM,self.cart_comm_sub_z)
+
+        for i in xrange(Gr.dims.nlg[0]):
+            for j in xrange(Gr.dims.nlg[1]):
+                mean[i][j] = mean[i][j]*n_vertical_i  
+
+        for i in xrange(Gr.dims.nlg[0]):
+            for j in xrange(Gr.dims.nlg[1]):
+                mean_local[i][j] = mean_local[i][j]*n_vertical_i  
+        return mean_local
+
 cdef class Pencil:
 
 
