@@ -558,7 +558,6 @@ cdef class RadiationIsdac(RadiationBase):
 
         cdef double [:] tmp
 
-        tmp[:] = 0.0
         tmp = Pa.HorizontalMean(Gr, &self.radiative_flux[0])
         NS.write_profile('radiative_flux',tmp[Gr.dims.gw:-Gr.dims.gw],Pa)
 
