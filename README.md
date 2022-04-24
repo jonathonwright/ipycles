@@ -25,7 +25,7 @@ Complie ipycles by doing following steps:
 
 1. `$ cd ipycles`
 
-2. `$ python generate_paramters.py`
+2. `$ python generate_parameters.py`
 
 3. `$ CC=mpicc python setup.py build_ext --inplace`
 
